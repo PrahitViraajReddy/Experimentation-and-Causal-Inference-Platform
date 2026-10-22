@@ -9,7 +9,7 @@ class BayesianABRequest(BaseModel):
     treatment_total: int = Field(gt=0)
     prior_alpha: float = Field(default=1.0, gt=0)
     prior_beta: float = Field(default=1.0, gt=0)
-    draws: int = Field(default=100000, ge=1000, le=1000000)
+    draws: int = Field(default=1500, ge=500, le=5000)
     seed: int = 42
 
 
