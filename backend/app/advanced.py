@@ -200,6 +200,39 @@ def synthetic_control(data: pd.DataFrame, unit: str, time: str, outcome: str, tr
             "caveat":"Descriptive synthetic-control estimate; inference is not supplied. Check pre-fit, donor contamination, placebo units/times, and sensitivity before causal claims."}
 
 
+
+def econml_cate(data: pd.DataFrame, treatment: str, outcome: str, covariates: list[str]) -> dict[str, Any]:
+    """Estimate average and heterogeneous treatment effects with EconML CausalForestDML."""
+    _require_columns(data, [treatment, outcome, *covariates])
+    if not covariates:
+        raise ValueError("At least one covariate is required for EconML CATE estimation")
+    frame = data[[treatment, outcome, *covariates]].dropna().copy()
+    frame[outcome] = pd.to_numeric(frame[outcome], errors="raise")
+    t = pd.to_numeric(frame[treatment], errors="raise").astype(int)
+    if len(frame) < 60 or set(t.unique()) != {0, 1} or t.value_counts().min() < 20:
+        raise ValueError("EconML requires >=60 complete rows and at least 20 observations in each binary treatment group")
+    X = pd.get_dummies(frame[covariates], drop_first=True, dtype=float)
+    X = X.replace([np.inf, -np.inf], np.nan)
+    if X.isna().any().any() or X.shape[1] == 0:
+        raise ValueError("Covariates must be finite numeric/categorical values")
+    from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+    from econml.dml import CausalForestDML
+    estimator = CausalForestDML(
+        model_y=RandomForestRegressor(n_estimators=80, min_samples_leaf=5, random_state=42),
+        model_t=RandomForestClassifier(n_estimators=80, min_samples_leaf=5, random_state=42),
+        discrete_treatment=True, n_estimators=100, min_samples_leaf=10, cv=3, random_state=42,
+    )
+    estimator.fit(frame[outcome].to_numpy(float), t.to_numpy(), X=X)
+    ate = float(estimator.ate(X=X))
+    lower, upper = estimator.ate_interval(X=X, alpha=0.05)
+    cate = np.asarray(estimator.effect(X=X), dtype=float).reshape(-1)
+    return {"method":"econml_causal_forest_dml", "estimand":"average treatment effect and conditional treatment effects",
+            "average_treatment_effect":ate, "confidence_interval_95":[float(lower),float(upper)],
+            "individual_effect_estimates_summary":{"mean":float(np.mean(cate)),"std":float(np.std(cate)),
+            "minimum":float(np.min(cate)),"maximum":float(np.max(cate))},
+            "sample_size":int(len(frame)), "covariates":list(X.columns),
+            "caveat":"Requires no unmeasured confounding given covariates, overlap, and appropriate nuisance models. CATE estimates are exploratory and should be validated out of sample."}
+
 def adjust_pvalues(p_values: list[float], method: str = "fdr_bh") -> dict[str, Any]:
     if not p_values or any(not np.isfinite(p) or p < 0 or p > 1 for p in p_values):
         raise ValueError("Provide p-values in [0, 1]")
