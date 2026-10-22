@@ -32,6 +32,34 @@ def bayesian_ab(control_successes: int, control_total: int, treatment_successes:
             "note": "Monte Carlo Beta-Binomial model with Beta prior; probability is conditional on this model and prior."}
 
 
+def bayesian_ab_pymc(control_successes: int, control_total: int, treatment_successes: int, treatment_total: int,
+                     prior_alpha: float = 1.0, prior_beta: float = 1.0, draws: int = 1500, seed: int = 42) -> dict[str, Any]:
+    """Fit a Beta-Binomial conversion model with PyMC MCMC and report P(B > A)."""
+    for successes, total, label in ((control_successes, control_total, "control"), (treatment_successes, treatment_total, "treatment")):
+        if total <= 0 or successes < 0 or successes > total:
+            raise ValueError(f"{label} requires 0 <= successes <= total and total > 0")
+    if prior_alpha <= 0 or prior_beta <= 0 or not 500 <= draws <= 5000:
+        raise ValueError("Prior parameters must be positive and PyMC draws must be between 500 and 5000")
+    import pymc as pm
+    with pm.Model() as model:
+        p_control = pm.Beta("p_control", alpha=prior_alpha, beta=prior_beta)
+        p_treatment = pm.Beta("p_treatment", alpha=prior_alpha, beta=prior_beta)
+        pm.Binomial("control_observed", n=control_total, p=p_control, observed=control_successes)
+        pm.Binomial("treatment_observed", n=treatment_total, p=p_treatment, observed=treatment_successes)
+        pm.Deterministic("risk_difference", p_treatment - p_control)
+        trace = pm.sample(draws=draws, tune=500, chains=2, cores=1, random_seed=seed,
+                          progressbar=False, return_inferencedata=True)
+    samples = np.asarray(trace.posterior["risk_difference"]).reshape(-1)
+    pc = np.asarray(trace.posterior["p_control"]).reshape(-1)
+    pt = np.asarray(trace.posterior["p_treatment"]).reshape(-1)
+    return {"method":"pymc_beta_binomial_mcmc", "probability_treatment_better":float(np.mean(samples > 0)),
+            "control_posterior_mean":float(np.mean(pc)), "treatment_posterior_mean":float(np.mean(pt)),
+            "risk_difference_mean":float(np.mean(samples)),
+            "risk_difference_credible_interval_95":[float(x) for x in np.quantile(samples,[0.025,0.975])],
+            "draws_per_chain":draws, "chains":2, "seed":seed,
+            "note":"PyMC Beta-Binomial posterior sampled with MCMC. Probability is conditional on the specified model and priors; inspect convergence for consequential decisions."}
+
+
 def sequential_ab(control_successes: int, control_total: int, treatment_successes: int, treatment_total: int,
                   alpha: float = 0.05, looks: int = 5, current_look: int | None = None) -> dict[str, Any]:
     """Conservative Bonferroni alpha-spending across a prespecified number of looks."""
@@ -63,7 +91,7 @@ def _require_columns(data: pd.DataFrame, cols: list[str]) -> None:
 
 
 def propensity_score_matching(data: pd.DataFrame, treatment: str, outcome: str, covariates: list[str]) -> dict[str, Any]:
-    """1:1 nearest propensity-score matching without replacement; binary treatment."""
+    """Estimate ATT with DoWhy propensity-score matching and report overlap diagnostics."""
     _require_columns(data, [treatment, outcome, *covariates])
     frame = data[[treatment, outcome, *covariates]].dropna().copy()
     if not covariates or len(frame) < 10 or set(frame[treatment].unique()) != {0, 1}:
@@ -79,6 +107,11 @@ def propensity_score_matching(data: pd.DataFrame, treatment: str, outcome: str, 
     t = frame[treatment].astype(int).to_numpy()
     model.fit(x, t)
     ps = np.clip(model.predict_proba(x)[:, 1], 1e-6, 1 - 1e-6)
+    from dowhy import CausalModel
+    causal_model = CausalModel(data=frame, treatment=treatment, outcome=outcome, common_causes=covariates)
+    identified = causal_model.identify_effect(proceed_when_unidentifiable=True)
+    dowhy_estimate = causal_model.estimate_effect(identified, method_name="backdoor.propensity_score_matching")
+    dowhy_att = float(dowhy_estimate.value)
     treated_idx, control_idx = np.flatnonzero(t == 1), np.flatnonzero(t == 0)
     cost = np.abs(ps[treated_idx, None] - ps[control_idx][None, :])
     rows, cols = linear_sum_assignment(cost)
@@ -92,7 +125,7 @@ def propensity_score_matching(data: pd.DataFrame, treatment: str, outcome: str, 
     se = float(stats.sem(differences))
     ci95 = stats.t.interval(0.95, len(differences)-1, loc=float(np.mean(differences)), scale=se) if se > 0 else (float(np.mean(differences)), float(np.mean(differences)))
     return {"method":"propensity_score_matching", "estimand":"ATT among matched treated units",
-            "effect_estimate":float(np.mean(differences)), "confidence_interval_95":[float(ci95[0]),float(ci95[1])],
+            "effect_estimate":float(dowhy_att), "matched_sample_effect_estimate":float(np.mean(differences)), "confidence_interval_95":[float(ci95[0]),float(ci95[1])],
             "matched_pairs":int(len(differences)), "treated_rows":int(len(treated_idx)), "control_rows":int(len(control_idx)),
             "caliper_logit_sd":caliper, "propensity_score_range":[float(ps.min()),float(ps.max())],
             "caveat":"Associational identification requires no unmeasured confounding, adequate overlap, and correctly measured covariates. Review balance before causal interpretation."}
