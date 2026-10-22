@@ -35,6 +35,25 @@ async def invalid_analysis_input(_request: Request, exc: ValueError) -> JSONResp
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
+@app.get("/", tags=["General"])
+def root() -> dict[str, object]:
+    """Provide a discoverable landing response for the deployed API."""
+    return {
+        "name": "Experimentation & Causal Inference Platform",
+        "status": "running",
+        "message": "API service is online. Use the documentation to explore available endpoints.",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+        "health": "/api/v1/health",
+        "available_endpoints": [
+            "/api/v1/power/sample-size",
+            "/api/v1/experiments/simulate",
+            "/api/v1/experiments/analyze",
+            "/api/v1/experiments/multiple-testing",
+        ],
+    }
+
+
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "experimentation-causal-platform"}
