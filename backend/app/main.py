@@ -2,7 +2,12 @@ import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse\nimport pandas as pd\nfrom io import StringIO\n\nfrom app.advanced import (bayesian_ab, sequential_ab, propensity_score_matching, difference_in_differences, synthetic_control, adjust_pvalues)\nfrom app.schemas_advanced import BayesianABRequest, SequentialABRequest, CSVAnalysisRequest, MultipleTestingRequest as AdvancedMultipleTestingRequest
+from fastapi.responses import JSONResponse
+import pandas as pd
+from io import StringIO
+
+from app.advanced import (bayesian_ab, sequential_ab, propensity_score_matching, difference_in_differences, synthetic_control, adjust_pvalues)
+from app.schemas_advanced import BayesianABRequest, SequentialABRequest, CSVAnalysisRequest, MultipleTestingRequest as AdvancedMultipleTestingRequest
 
 from app.schemas import AnalyzeRequest, MultipleTestingRequest, PowerRequest, SimulationRequest
 from app.services import analyze_experiment, correct_pvalues, calculate_sample_size, simulate_ab
@@ -56,7 +61,11 @@ def root() -> dict[str, object]:
             "/api/v1/power/sample-size",
             "/api/v1/experiments/simulate",
             "/api/v1/experiments/analyze",
-            "/api/v1/experiments/multiple-testing",\n            "/api/v1/experiments/bayesian",\n            "/api/v1/experiments/sequential",\n            "/api/v1/causal/analyze",\n            "/api/v1/data/analyze-csv",
+            "/api/v1/experiments/multiple-testing",
+            "/api/v1/experiments/bayesian",
+            "/api/v1/experiments/sequential",
+            "/api/v1/causal/analyze",
+            "/api/v1/data/analyze-csv",
         ],
     }
 
