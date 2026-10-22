@@ -121,7 +121,23 @@ export default function App() {
         <button type="button" onClick={runCsv}>Analyze uploaded CSV ↗</button>
       </section>
     </section>
-    {result && <section className="panel chart-panel"><p className="eyebrow">VISUAL SUMMARY</p><h2>Group observations</h2><div className="bars"><div><span>Control · n={result.sample_size_control}</span><div className="bar-track"><i style={{width: "50%"}} /></div></div><div><span>Treatment · n={result.sample_size_treatment}</span><div className="bar-track"><i style={{width: "75%"}} /></div></div></div><p className="footnote">Bars show relative sample-size indicators, not the treatment effect. Interpret the numeric estimate and confidence interval above.</p></section>
+    {result && (
+      <section className="panel chart-panel">
+        <p className="eyebrow">VISUAL SUMMARY</p>
+        <h2>Group observations</h2>
+        <div className="bars">
+          <div>
+            <span>Control · n={result.sample_size_control}</span>
+            <div className="bar-track"><i style={{ width: "50%" }} /></div>
+          </div>
+          <div>
+            <span>Treatment · n={result.sample_size_treatment}</span>
+            <div className="bar-track"><i style={{ width: "75%" }} /></div>
+          </div>
+        </div>
+        <p className="footnote">Bars show relative sample-size indicators, not the treatment effect. Interpret the numeric estimate and confidence interval above.</p>
+      </section>
+    )}
     <footer><span>EvidenceLab · Transparent statistical results</span><span>React · FastAPI · Statsmodels</span></footer>
   </main>;
 }
