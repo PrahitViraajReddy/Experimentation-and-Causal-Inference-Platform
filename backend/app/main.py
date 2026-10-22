@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.schemas import AnalyzeRequest, MultipleTestingRequest, PowerRequest, SimulationRequest
 from app.services import analyze_experiment, correct_pvalues, calculate_sample_size, simulate_ab
@@ -16,6 +17,11 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(ValueError)
+async def invalid_analysis_input(_request: Request, exc: ValueError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.get("/api/v1/health")
