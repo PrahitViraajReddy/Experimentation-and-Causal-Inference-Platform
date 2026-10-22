@@ -22,6 +22,7 @@ default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://experimentation-and-causal-inference-platform-frontend.vercel.app",
+    "https://experimentation-and-causal-inference-platform-fronte-aas97vgov.vercel.app",
 ]
 configured_origins = os.getenv("CORS_ORIGINS", "")
 allowed_origins = list(dict.fromkeys(
