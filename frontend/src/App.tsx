@@ -14,7 +14,17 @@ export default function App() {
   const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);\n  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");\n\n  useEffect(() => {\n    const controller = new AbortController();\n    fetch(`${API}/api/v1/health`, { signal: controller.signal })\n      .then((response) => { if (!response.ok) throw new Error("API health check failed"); return response.json(); })\n      .then((body) => setApiStatus(body.status === "ok" ? "online" : "offline"))\n      .catch((error) => { if (error.name !== "AbortError") setApiStatus("offline"); });\n    return () => controller.abort();\n  }, []);
+  const [loading, setLoading] = useState(false);
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API}/api/v1/health`, { signal: controller.signal })
+      .then((response) => { if (!response.ok) throw new Error("API health check failed"); return response.json(); })
+      .then((body) => setApiStatus(body.status === "ok" ? "online" : "offline"))
+      .catch((error) => { if (error.name !== "AbortError") setApiStatus("offline"); });
+    return () => controller.abort();
+  }, []);
 
   async function run(event: FormEvent) {
     event.preventDefault(); setLoading(true); setError(""); setResult(null);
