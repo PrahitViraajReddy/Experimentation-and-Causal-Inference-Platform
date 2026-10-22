@@ -13,13 +13,20 @@ app = FastAPI(
     description="Statistical APIs with explicit assumptions and reproducible outputs.",
 )
 
-default_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://experimentation-and-causal-inferenc.vercel.app",
+]
 configured_origins = os.getenv("CORS_ORIGINS", "")
-allowed_origins = [
-    origin.strip().rstrip("/")
-    for origin in configured_origins.split(",")
-    if origin.strip()
-] or default_origins
+allowed_origins = list(dict.fromkeys(
+    default_origins
+    + [
+        origin.strip().rstrip("/")
+        for origin in configured_origins.split(",")
+        if origin.strip()
+    ]
+))
 
 app.add_middleware(
     CORSMiddleware,
