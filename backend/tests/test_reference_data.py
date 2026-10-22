@@ -1,4 +1,4 @@
-from app.scripts.generate_reference_data import generate
+from scripts.generate_reference_data import generate
 
 
 def test_reference_dataset_is_reproducible():
