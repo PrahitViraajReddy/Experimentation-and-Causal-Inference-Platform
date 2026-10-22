@@ -9,6 +9,9 @@ venv/
 # Frontend
 node_modules/
 dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
 
 # Local reference data: download on demand; do not commit raw datasets.
 data/raw/*.csv
