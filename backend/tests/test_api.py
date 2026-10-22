@@ -50,3 +50,11 @@ def test_invalid_simulation_is_rejected():
         "sample_size_per_arm": 50, "baseline_rate": 0.8, "absolute_effect": 0.3, "seed": 1
     })
     assert response.status_code == 422
+
+def test_root_landing_route():
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "running"
+    assert body["docs"] == "/docs"
+    assert body["health"] == "/api/v1/health"
