@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
 const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference.onrender.com")).replace(/\/+$/, "");
 type Result = {
@@ -11,8 +11,15 @@ type Result = {
 export default function App() {
   const [method, setMethod] = useState("welch_t");
   const [control, setControl] = useState("1,0,1,1,0,1,0,1,1,0");
-  const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");\n\n  function changeMethod(next: string) {\n    setMethod(next);\n    if (next === "proportion_z") { setControl("42,500"); setTreatment("58,500"); }\n    else if (next === "chi_square") { setControl("30,20"); setTreatment("20,30"); }\n    else { setControl("1,0,1,1,0,1,0,1,1,0"); setTreatment("1,1,1,1,0,1,1,1,0,1"); }\n  }
-  const [result, setResult] = useState<Result | null>(null);
+  const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");
+
+  function changeMethod(next: string) {
+    setMethod(next);
+    if (next === "proportion_z") { setControl("42,500"); setTreatment("58,500"); }
+    else if (next === "chi_square") { setControl("30,20"); setTreatment("20,30"); }
+    else { setControl("1,0,1,1,0,1,0,1,1,0"); setTreatment("1,1,1,1,0,1,1,1,0,1"); }
+  }
+  const [result, setResult] = useState<Result | null>(null);\n  const [csvText, setCsvText] = useState("");\n  const [csvName, setCsvName] = useState("");\n  const [advancedResult, setAdvancedResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
@@ -26,7 +33,7 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
-  async function run(event: FormEvent) {
+  async function uploadCsv(event: ChangeEvent<HTMLInputElement>) {\n    const file = event.target.files?.[0];\n    if (!file) return;\n    if (!file.name.toLowerCase().endsWith(".csv")) { setError("Please upload a .csv file."); return; }\n    setCsvName(file.name); setCsvText(await file.text()); setError(""); setAdvancedResult(null);\n  }\n\n  async function runAdvanced(kind: "bayesian" | "sequential") {\n    setError(""); setAdvancedResult(null);\n    try {\n      const parse = (value: string) => value.split(",").map((part) => Number(part.trim()));\n      const [cs, ct] = parse(control); const [ts, tt] = parse(treatment);\n      if (![cs, ct, ts, tt].every(Number.isFinite)) throw new Error("For Bayesian/sequential analysis enter successes,total for both groups.");\n      const response = await fetch(`${API}/api/v1/experiments/${kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ control_successes: cs, control_total: ct, treatment_successes: ts, treatment_total: tt, ...(kind === "sequential" ? { looks: 5, current_look: 1 } : {}) }) });\n      const body = await response.json(); if (!response.ok) throw new Error(body.detail || "Advanced analysis failed."); setAdvancedResult(body);\n    } catch (e) { setError(e instanceof Error ? e.message : "Advanced analysis failed."); }\n  }\n\n  async function runCsv() {\n    setError(""); setAdvancedResult(null);\n    if (!csvText) { setError("Upload a CSV file first."); return; }\n    try {\n      const response = await fetch(`${API}/api/v1/data/analyze-csv`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv_text: csvText, method: "welch_t", group_column: "variant", outcome_column: "converted" }) });\n      const body = await response.json(); if (!response.ok) throw new Error(body.detail || "CSV analysis failed."); setAdvancedResult(body);\n    } catch (e) { setError(e instanceof Error ? e.message : "CSV analysis failed."); }\n  }\n\n  async function run(event: FormEvent) {
     event.preventDefault(); setLoading(true); setError(""); setResult(null);
     const values = (text: string) => text.split(",").map((x) => Number(x.trim()));
     try {
@@ -69,6 +76,22 @@ export default function App() {
         <p className="footnote">Statistical significance is not practical significance. Verify design assumptions and data quality before deciding.</p>
       </section>
     </section>
+    <section className="grid advanced-grid">
+      <section className="panel">
+        <div className="heading"><div><p className="eyebrow">03 / ADVANCED METHODS</p><h2>Bayesian & sequential</h2></div><span className="step">03</span></div>
+        <p className="intro small-intro">Use successes,total values in the two input fields above. These methods analyze binary conversion outcomes.</p>
+        <div className="button-row"><button type="button" onClick={() => runAdvanced("bayesian")}>Bayesian A/B</button><button type="button" className="secondary" onClick={() => runAdvanced("sequential")}>Sequential check</button></div>
+        {advancedResult && <div className="json-result"><pre>{JSON.stringify(advancedResult, null, 2)}</pre></div>}
+      </section>
+      <section className="panel">
+        <div className="heading"><div><p className="eyebrow">04 / DATA UPLOAD</p><h2>Analyze a CSV</h2></div><span className="step">04</span></div>
+        <label>CSV file<input type="file" accept=".csv,text/csv" onChange={uploadCsv}/></label>
+        {csvName && <p className="footnote">Selected: {csvName} · {(csvText.length / 1024).toFixed(1)} KB</p>}
+        <p className="footnote">For this quick upload flow, include a <code>variant</code> column with two groups and a numeric <code>converted</code> outcome. The upload is analyzed in memory and is not stored.</p>
+        <button type="button" onClick={runCsv}>Analyze uploaded CSV ↗</button>
+      </section>
+    </section>
+    {result && <section className="panel chart-panel"><p className="eyebrow">VISUAL SUMMARY</p><h2>Group observations</h2><div className="bars"><div><span>Control · n={result.sample_size_control}</span><div className="bar-track"><i style={{width: "50%"}} /></div></div><div><span>Treatment · n={result.sample_size_treatment}</span><div className="bar-track"><i style={{width: "75%"}} /></div></div></div><p className="footnote">Bars show relative sample-size indicators, not the treatment effect. Interpret the numeric estimate and confidence interval above.</p></section>
     <footer><span>EvidenceLab · Transparent statistical results</span><span>React · FastAPI · Statsmodels</span></footer>
   </main>;
 }
