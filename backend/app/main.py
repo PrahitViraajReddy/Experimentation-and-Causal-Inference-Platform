@@ -38,7 +38,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     # Permit this project's Vercel production and uniquely named deployment URLs.
     # Exact configured origins above remain supported for custom domains.
-    allow_origin_regex=r"https://experimentation-and-causal-inference-platform-frontend-[a-z0-9-]+\\.vercel\\.app",
+    allow_origin_regex=r"https://experimentation-and-causal-inference-platform-frontend-[a-z0-9-]+\.vercel\.app",
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
