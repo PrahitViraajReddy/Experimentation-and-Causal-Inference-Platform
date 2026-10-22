@@ -147,7 +147,7 @@ def analyze_csv(request: CSVAnalysisRequest) -> dict:
         raise ValueError(f"Could not parse CSV: {exc}") from exc
     if data.empty:
         raise ValueError("CSV must contain at least one data row")
-    if request.method == "difference_in_differences" or request.method in {"propensity_score_matching", "synthetic_control"}:
+    if request.method == "difference_in_differences" or request.method in {"propensity_score_matching", "synthetic_control", "econml_cate"}:
         return causal_analysis(request)
     if request.method == "welch_t":
         if not request.group_column or not request.outcome_column:
