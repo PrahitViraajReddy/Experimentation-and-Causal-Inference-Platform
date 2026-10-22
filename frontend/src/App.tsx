@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
-const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference.onrender.com")).replace(/\\/+$/, "");
+const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference.onrender.com")).replace(/\/+$/, "");
 type Result = {
   method: string; statistic: number; p_value: number; alpha: number;
   statistically_significant: boolean; sample_size_control: number;
