@@ -1,6 +1,6 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-const API = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference.onrender.com")).replace(/\\/+$/, "");
 type Result = {
   method: string; statistic: number; p_value: number; alpha: number;
   statistically_significant: boolean; sample_size_control: number;
@@ -14,7 +14,7 @@ export default function App() {
   const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);\n  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");\n\n  useEffect(() => {\n    const controller = new AbortController();\n    fetch(`${API}/api/v1/health`, { signal: controller.signal })\n      .then((response) => { if (!response.ok) throw new Error("API health check failed"); return response.json(); })\n      .then((body) => setApiStatus(body.status === "ok" ? "online" : "offline"))\n      .catch((error) => { if (error.name !== "AbortError") setApiStatus("offline"); });\n    return () => controller.abort();\n  }, []);
 
   async function run(event: FormEvent) {
     event.preventDefault(); setLoading(true); setError(""); setResult(null);
@@ -36,7 +36,7 @@ export default function App() {
   }
 
   return <main className="shell">
-    <header className="topbar"><a className="brand" href="#"><span className="mark">∑</span> EvidenceLab</a><span className="status"><i /> Statistical workspace</span></header>
+    <header className="topbar"><a className="brand" href="#"><span className="mark">∑</span> EvidenceLab</a><span className={`status api-status ${apiStatus}`} title={`Backend API: ${API}`}><i /> {apiStatus === "checking" ? "Connecting to API…" : apiStatus === "online" ? "API connected" : "API unavailable"}</span></header>
     <section className="hero"><p className="eyebrow">EXPERIMENTATION & CAUSAL INFERENCE</p><h1>Make decisions with<br/><em>statistical evidence.</em></h1><p className="intro">A transparent workspace for experiment analysis. Quantify uncertainty, inspect effect sizes, and keep assumptions visible.</p></section>
     <section className="grid">
       <form className="panel" onSubmit={run}>
