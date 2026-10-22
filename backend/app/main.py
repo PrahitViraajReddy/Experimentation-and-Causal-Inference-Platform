@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 import pandas as pd
 from io import StringIO
 
-from app.advanced import (bayesian_ab, sequential_ab, propensity_score_matching, difference_in_differences, synthetic_control, adjust_pvalues)
+from app.advanced import (bayesian_ab_pymc, sequential_ab, propensity_score_matching, difference_in_differences, synthetic_control, adjust_pvalues)
 from app.schemas_advanced import BayesianABRequest, SequentialABRequest, CSVAnalysisRequest, MultipleTestingRequest as AdvancedMultipleTestingRequest
 
 from app.schemas import AnalyzeRequest, MultipleTestingRequest, PowerRequest, SimulationRequest
@@ -99,7 +99,7 @@ def multiple_testing(request: MultipleTestingRequest) -> dict:
 def bayesian(request: BayesianABRequest) -> dict:
     if request.control_successes > request.control_total or request.treatment_successes > request.treatment_total:
         raise ValueError("Successes cannot exceed totals")
-    return bayesian_ab(**request.model_dump())
+    return bayesian_ab_pymc(**request.model_dump())
 
 
 @app.post("/api/v1/experiments/sequential")
