@@ -11,7 +11,7 @@ type Result = {
 export default function App() {
   const [method, setMethod] = useState("welch_t");
   const [control, setControl] = useState("1,0,1,1,0,1,0,1,1,0");
-  const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");
+  const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");\n\n  function changeMethod(next: string) {\n    setMethod(next);\n    if (next === "proportion_z") { setControl("42,500"); setTreatment("58,500"); }\n    else if (next === "chi_square") { setControl("30,20"); setTreatment("20,30"); }\n    else { setControl("1,0,1,1,0,1,0,1,1,0"); setTreatment("1,1,1,1,0,1,1,1,0,1"); }\n  }
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,10 +51,10 @@ export default function App() {
     <section className="grid">
       <form className="panel" onSubmit={run}>
         <div className="heading"><div><p className="eyebrow">01 / ANALYSIS SETUP</p><h2>Compare two groups</h2></div><span className="step">01</span></div>
-        <label>Statistical method<select value={method} onChange={e => setMethod(e.target.value)}><option value="welch_t">Welch's t-test · continuous outcome</option><option value="proportion_z">Two-proportion z-test · conversion</option><option value="chi_square">Chi-square · category counts</option></select></label>
-        <label>Control data <small>comma-separated values</small><textarea rows={4} value={control} onChange={e => setControl(e.target.value)} required /></label>
-        <label>Treatment data <small>comma-separated values</small><textarea rows={4} value={treatment} onChange={e => setTreatment(e.target.value)} required /></label>
-        <div className="notice"><b>Input format</b><p>For proportion testing, enter successes,total (e.g. 42,500) per group. For chi-square, enter category counts in the same order.</p></div>
+        <label>Statistical method<select value={method} onChange={e => changeMethod(e.target.value)}><option value="welch_t">Welch's t-test · continuous outcome</option><option value="proportion_z">Two-proportion z-test · conversion</option><option value="chi_square">Chi-square · category counts</option></select></label>
+        <label>Control data <small>{method === "proportion_z" ? "successes,total" : method === "chi_square" ? "category counts" : "comma-separated observations"}</small><textarea rows={4} value={control} onChange={e => setControl(e.target.value)} required /></label>
+        <label>Treatment data <small>{method === "proportion_z" ? "successes,total" : method === "chi_square" ? "category counts in same order" : "comma-separated observations"}</small><textarea rows={4} value={treatment} onChange={e => setTreatment(e.target.value)} required /></label>
+        <div className="notice"><b>Input format</b><p>{method === "proportion_z" ? "Enter successes,total for each group (e.g. 42,500). The values update automatically when you switch methods." : method === "chi_square" ? "Enter category counts for each group in the same category order." : "Enter raw numeric observations for each group, separated by commas."}</p></div>
         <button disabled={loading}>{loading ? "Analyzing…" : "Run analysis"} <span>↗</span></button>
         {error && <p className="error" role="alert">{error}</p>}
       </form>
