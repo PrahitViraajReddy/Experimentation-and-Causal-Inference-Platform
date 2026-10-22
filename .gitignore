@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Frontend
+node_modules/
+dist/
+
+# Local reference data: download on demand; do not commit raw datasets.
+data/raw/*.csv
+data/raw/*.part
