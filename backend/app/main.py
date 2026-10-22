@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 import pandas as pd
 from io import StringIO
 
-from app.advanced import (bayesian_ab_pymc, sequential_ab, propensity_score_matching, difference_in_differences, synthetic_control, adjust_pvalues)
+from app.advanced import (bayesian_ab_pymc, sequential_ab, propensity_score_matching, difference_in_differences, synthetic_control, econml_cate, adjust_pvalues)
 from app.schemas_advanced import BayesianABRequest, SequentialABRequest, CSVAnalysisRequest, MultipleTestingRequest as AdvancedMultipleTestingRequest
 
 from app.schemas import AnalyzeRequest, MultipleTestingRequest, PowerRequest, SimulationRequest
@@ -120,6 +120,10 @@ def causal_analysis(request: CSVAnalysisRequest) -> dict:
     if data.empty:
         raise ValueError("CSV must contain at least one data row")
     method = request.method
+    if method == "econml_cate":
+        if not request.treatment_column or not request.outcome_column:
+            raise ValueError("treatment_column and outcome_column are required")
+        return econml_cate(data, request.treatment_column, request.outcome_column, request.covariate_columns)
     if method == "propensity_score_matching":
         if not request.treatment_column or not request.outcome_column:
             raise ValueError("treatment_column and outcome_column are required")
