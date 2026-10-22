@@ -1,143 +1,99 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
-const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference.onrender.com")).replace(/\/+$/, "");
-type Result = {
-  method: string; statistic: number; p_value: number; alpha: number;
-  statistically_significant: boolean; sample_size_control: number;
-  sample_size_treatment: number; effect: Record<string, number | number[] | null>;
-  interpretation: string;
-};
+const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inferenc.onrender.com")).replace(/\/+$/, "");
+type AnyResult = Record<string, any>;
+type AnalysisMethod = "welch_t" | "proportion_z" | "chi_square";
+type CausalMethod = "welch_t" | "propensity_score_matching" | "difference_in_differences" | "synthetic_control";
+
+function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+  return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
+}
+function Output({ value }: { value: AnyResult | null }) {
+  if (!value) return <div className="empty-state">Results will appear here after you run an analysis.</div>;
+  const ci = value.effect?.confidence_interval ?? value.confidence_interval_95 ?? value.risk_difference_credible_interval_95;
+  const estimate = value.effect?.mean_difference_treatment_minus_control ?? value.effect?.absolute_lift ?? value.effect_estimate ?? value.effect_estimate_treatment_minus_control ?? value.risk_difference_mean;
+  return <div className="result-body">
+    {value.interpretation && <div className="interpretation"><strong>Conclusion</strong><p>{value.interpretation}</p></div>}
+    <div className="result-grid">{Object.entries(value).filter(([k,v]) => !["effect","interpretation","results","control","treatment","note","caveat"].includes(k) && (typeof v === "number" || typeof v === "boolean" || typeof v === "string")).slice(0,12).map(([k,v]) => <div className="metric" key={k}><small>{k.replace(/_/g," ")}</small><b>{typeof v === "number" ? (Math.abs(v) < 0.001 && v !== 0 ? v.toExponential(2) : Number(v.toPrecision(5))).toString() : String(v)}</b></div>)}</div>
+    {estimate !== undefined && <div className="effect-chart"><div className="section-kicker">ESTIMATED EFFECT</div><strong>{typeof estimate === "number" ? Number(estimate.toPrecision(6)) : String(estimate)}</strong>{Array.isArray(ci) && ci.length === 2 && <p>Interval: [{Number(ci[0]).toPrecision(5)}, {Number(ci[1]).toPrecision(5)}]</p>}<svg viewBox="0 0 320 46" role="img" aria-label="Effect estimate with zero reference"><line x1="12" y1="23" x2="308" y2="23" stroke="#52637a" strokeWidth="1"/><line x1="160" y1="6" x2="160" y2="40" stroke="#aab8ca" strokeDasharray="3 3"/><circle cx={Math.max(18,Math.min(302,160 + Math.tanh(Number(estimate) || 0)*125))} cy="23" r="6" fill="#8de4c2"/></svg><small>Marker is a normalized direction indicator; the numeric estimate and interval above are authoritative.</small></div>}
+    {value.results && <div className="table-wrap"><table><thead><tr><th>Test</th><th>Raw p</th><th>Adjusted p</th><th>Reject null</th></tr></thead><tbody>{value.results.map((row: AnyResult, i: number) => <tr key={i}><td>{i+1}</td><td>{Number(row.raw_p_value).toPrecision(4)}</td><td>{Number(row.adjusted_p_value).toPrecision(4)}</td><td>{row.reject_null ? "Yes" : "No"}</td></tr>)}</tbody></table></div>}
+    {value.note && <p className="caveat">{value.note}</p>}{value.caveat && <p className="caveat">{value.caveat}</p>}
+    <details><summary>Full API response</summary><pre>{JSON.stringify(value,null,2)}</pre></details>
+  </div>;
+}
 
 export default function App() {
-  const [method, setMethod] = useState("welch_t");
-  const [control, setControl] = useState("1,0,1,1,0,1,0,1,1,0");
-  const [treatment, setTreatment] = useState("1,1,1,1,0,1,1,1,0,1");
+  const [apiStatus,setApiStatus] = useState("checking");
+  const [error,setError] = useState("");
+  const [loading,setLoading] = useState(false);
+  const [result,setResult] = useState<AnyResult|null>(null);
+  const [active,setActive] = useState("analyze");
+  const [method,setMethod] = useState<AnalysisMethod>("welch_t");
+  const [control,setControl] = useState("12,14,13,15,11,16,14,13");
+  const [treatment,setTreatment] = useState("14,15,16,17,13,18,15,16");
+  const [alpha,setAlpha] = useState("0.05");
+  const [powerMetric,setPowerMetric] = useState<"continuous"|"binary">("binary");
+  const [mde,setMde] = useState("0.02");
+  const [baseline,setBaseline] = useState("0.10");
+  const [sd,setSd] = useState("1");
+  const [targetPower,setTargetPower] = useState("0.8");
+  const [allocation,setAllocation] = useState("1");
+  const [simN,setSimN] = useState("500");
+  const [simRate,setSimRate] = useState("0.1");
+  const [simEffect,setSimEffect] = useState("0.02");
+  const [seed,setSeed] = useState("42");
+  const [pValues,setPValues] = useState("0.001,0.01,0.03,0.12,0.7");
+  const [correction,setCorrection] = useState("fdr_bh");
+  const [successA,setSuccessA] = useState("42");
+  const [totalA,setTotalA] = useState("500");
+  const [successB,setSuccessB] = useState("58");
+  const [totalB,setTotalB] = useState("500");
+  const [priorA,setPriorA] = useState("1");
+  const [priorB,setPriorB] = useState("1");
+  const [draws,setDraws] = useState("100000");
+  const [looks,setLooks] = useState("5");
+  const [currentLook,setCurrentLook] = useState("1");
+  const [csvText,setCsvText] = useState("");
+  const [csvName,setCsvName] = useState("");
+  const [csvMethod,setCsvMethod] = useState<CausalMethod>("welch_t");
+  const [groupCol,setGroupCol] = useState("variant");
+  const [outcomeCol,setOutcomeCol] = useState("converted");
+  const [treatmentCol,setTreatmentCol] = useState("treatment");
+  const [covariateCols,setCovariateCols] = useState("age,income");
+  const [timeCol,setTimeCol] = useState("period");
+  const [treatedUnit,setTreatedUnit] = useState("");
+  const [interventionTime,setInterventionTime] = useState("10");
+  const csvColumns = useMemo(() => csvText ? (csvText.split(/\r?\n/,1)[0] || "").split(",").map(x=>x.trim().replace(/^["']|["']$/g,"")).filter(Boolean) : [],[csvText]);
 
-  function changeMethod(next: string) {
-    setMethod(next);
-    if (next === "proportion_z") { setControl("42,500"); setTreatment("58,500"); }
-    else if (next === "chi_square") { setControl("30,20"); setTreatment("20,30"); }
-    else { setControl("1,0,1,1,0,1,0,1,1,0"); setTreatment("1,1,1,1,0,1,1,1,0,1"); }
+  useEffect(()=>{const ctl=new AbortController();fetch(API+"/api/v1/health",{signal:ctl.signal}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(x=>setApiStatus(x.status==="ok"?"online":"offline")).catch(()=>setApiStatus("offline"));return()=>ctl.abort()},[]);
+  async function request(path:string,payload:AnyResult) {
+    setLoading(true);setError("");setResult(null);
+    try {const response=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==="string"?body.detail:Array.isArray(body.detail)?body.detail.map((x:AnyResult)=>x.msg).join("; "):"Request failed");setResult(body);}
+    catch(e){setError(e instanceof Error?e.message:"Request failed. Check that the backend is online.");}
+    finally{setLoading(false);}
   }
-  const [result, setResult] = useState<Result | null>(null);
-  const [csvText, setCsvText] = useState("");
-  const [csvName, setCsvName] = useState("");
-  const [advancedResult, setAdvancedResult] = useState<Record<string, unknown> | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${API}/api/v1/health`, { signal: controller.signal })
-      .then((response) => { if (!response.ok) throw new Error("API health check failed"); return response.json(); })
-      .then((body) => setApiStatus(body.status === "ok" ? "online" : "offline"))
-      .catch((error) => { if (error.name !== "AbortError") setApiStatus("offline"); });
-    return () => controller.abort();
-  }, []);
-
-  async function uploadCsv(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".csv")) { setError("Please upload a .csv file."); return; }
-    setCsvName(file.name); setCsvText(await file.text()); setError(""); setAdvancedResult(null);
-  }
-
-  async function runAdvanced(kind: "bayesian" | "sequential") {
-    setError(""); setAdvancedResult(null);
-    try {
-      const parse = (value: string) => value.split(",").map((part) => Number(part.trim()));
-      const [cs, ct] = parse(control); const [ts, tt] = parse(treatment);
-      if (![cs, ct, ts, tt].every(Number.isFinite)) throw new Error("For Bayesian/sequential analysis enter successes,total for both groups.");
-      const response = await fetch(`${API}/api/v1/experiments/${kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ control_successes: cs, control_total: ct, treatment_successes: ts, treatment_total: tt, ...(kind === "sequential" ? { looks: 5, current_look: 1 } : {}) }) });
-      const body = await response.json(); if (!response.ok) throw new Error(body.detail || "Advanced analysis failed."); setAdvancedResult(body);
-    } catch (e) { setError(e instanceof Error ? e.message : "Advanced analysis failed."); }
-  }
-
-  async function runCsv() {
-    setError(""); setAdvancedResult(null);
-    if (!csvText) { setError("Upload a CSV file first."); return; }
-    try {
-      const response = await fetch(`${API}/api/v1/data/analyze-csv`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv_text: csvText, method: "welch_t", group_column: "variant", outcome_column: "converted" }) });
-      const body = await response.json(); if (!response.ok) throw new Error(body.detail || "CSV analysis failed."); setAdvancedResult(body);
-    } catch (e) { setError(e instanceof Error ? e.message : "CSV analysis failed."); }
-  }
-
-  async function run(event: FormEvent) {
-    event.preventDefault(); setLoading(true); setError(""); setResult(null);
-    const values = (text: string) => text.split(",").map((x) => Number(x.trim()));
-    try {
-      const response = await fetch(`${API}/api/v1/experiments/analyze`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method, control: values(control), treatment: values(treatment), alpha: 0.05 }),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        const detail = Array.isArray(body.detail) ? body.detail.map((x: { msg: string }) => x.msg).join("; ") : body.detail;
-        throw new Error(detail || "Analysis failed.");
-      }
-      setResult(body as Result);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not connect to the API. Start FastAPI and try again.");
-    } finally { setLoading(false); }
-  }
-
+  function parseValues(s:string){return s.split(",").map(x=>Number(x.trim()));}
+  function runAnalysis(e:FormEvent){e.preventDefault();const a=parseValues(control),b=parseValues(treatment);if(!a.length||!b.length||[...a,...b].some(x=>!Number.isFinite(x))){setError("Enter comma-separated numeric values.");return;}void request("/api/v1/experiments/analyze",{method,control:a,treatment:b,alpha:Number(alpha)});}
+  function runPower(e:FormEvent){e.preventDefault();void request("/api/v1/power/sample-size",{metric_type:powerMetric,alpha:Number(alpha),power:Number(targetPower),allocation_ratio:Number(allocation),minimum_detectable_effect:Number(mde),...(powerMetric==="binary"?{baseline_rate:Number(baseline)}:{standard_deviation:Number(sd)})});}
+  function runSimulation(e:FormEvent){e.preventDefault();void request("/api/v1/experiments/simulate",{sample_size_per_arm:Number(simN),baseline_rate:Number(simRate),absolute_effect:Number(simEffect),seed:Number(seed)});}
+  function runCorrection(e:FormEvent){e.preventDefault();const p=parseValues(pValues);if(p.some(x=>!Number.isFinite(x))){setError("Enter comma-separated p-values between 0 and 1.");return;}void request("/api/v1/experiments/multiple-testing",{p_values:p,method:correction,alpha:Number(alpha)});}
+  function runBayes(e:FormEvent){e.preventDefault();void request("/api/v1/experiments/bayesian",{control_successes:Number(successA),control_total:Number(totalA),treatment_successes:Number(successB),treatment_total:Number(totalB),prior_alpha:Number(priorA),prior_beta:Number(priorB),draws:Number(draws),seed:42});}
+  function runSequential(e:FormEvent){e.preventDefault();void request("/api/v1/experiments/sequential",{control_successes:Number(successA),control_total:Number(totalA),treatment_successes:Number(successB),treatment_total:Number(totalB),alpha:Number(alpha),looks:Number(looks),current_look:Number(currentLook)});}
+  async function readCsv(e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(!file)return;if(!file.name.toLowerCase().endsWith(".csv")){setError("Please select a .csv file.");return;}if(file.size>5*1024*1024){setError("CSV must be smaller than 5 MB.");return;}const text=await file.text();setCsvName(file.name);setCsvText(text);setError("");setResult(null);}
+  function runCsv(e:FormEvent){e.preventDefault();if(!csvText){setError("Upload a CSV first.");return;}const payload:AnyResult={csv_text:csvText,method:csvMethod};if(csvMethod==="welch_t"){payload.group_column=groupCol;payload.outcome_column=outcomeCol;}else if(csvMethod==="propensity_score_matching"){payload.treatment_column=treatmentCol;payload.outcome_column=outcomeCol;payload.covariate_columns=covariateCols.split(",").map(x=>x.trim()).filter(Boolean);}else if(csvMethod==="difference_in_differences"){payload.group_column=treatmentCol;payload.time_column=timeCol;payload.outcome_column=outcomeCol;}else{payload.group_column=treatmentCol;payload.time_column=timeCol;payload.outcome_column=outcomeCol;payload.treated_unit=treatedUnit;payload.intervention_time=Number(interventionTime);}void request("/api/v1/data/analyze-csv",payload);}
+  const nav=[["analyze","Experiment analysis"],["power","Power & sample size"],["simulate","Simulate data"],["correction","Multiple testing"],["bayes","Bayesian A/B"],["sequential","Sequential test"],["causal","Causal analysis"]];
   return <main className="shell">
-    <header className="topbar"><a className="brand" href="#"><span className="mark">∑</span> EvidenceLab</a><span className={`status api-status ${apiStatus}`} title={`Backend API: ${API}`}><i /> {apiStatus === "checking" ? "Connecting to API…" : apiStatus === "online" ? "API connected" : "API unavailable"}</span></header>
-    <section className="hero"><p className="eyebrow">EXPERIMENTATION & CAUSAL INFERENCE</p><h1>Make decisions with<br/><em>statistical evidence.</em></h1><p className="intro">A transparent workspace for experiment analysis. Quantify uncertainty, inspect effect sizes, and keep assumptions visible.</p></section>
-    <section className="grid">
-      <form className="panel" onSubmit={run}>
-        <div className="heading"><div><p className="eyebrow">01 / ANALYSIS SETUP</p><h2>Compare two groups</h2></div><span className="step">01</span></div>
-        <label>Statistical method<select value={method} onChange={e => changeMethod(e.target.value)}><option value="welch_t">Welch's t-test · continuous outcome</option><option value="proportion_z">Two-proportion z-test · conversion</option><option value="chi_square">Chi-square · category counts</option></select></label>
-        <label>Control data <small>{method === "proportion_z" ? "successes,total" : method === "chi_square" ? "category counts" : "comma-separated observations"}</small><textarea rows={4} value={control} onChange={e => setControl(e.target.value)} required /></label>
-        <label>Treatment data <small>{method === "proportion_z" ? "successes,total" : method === "chi_square" ? "category counts in same order" : "comma-separated observations"}</small><textarea rows={4} value={treatment} onChange={e => setTreatment(e.target.value)} required /></label>
-        <div className="notice"><b>Input format</b><p>{method === "proportion_z" ? "Enter successes,total for each group (e.g. 42,500). The values update automatically when you switch methods." : method === "chi_square" ? "Enter category counts for each group in the same category order." : "Enter raw numeric observations for each group, separated by commas."}</p></div>
-        <button disabled={loading}>{loading ? "Analyzing…" : "Run analysis"} <span>↗</span></button>
-        {error && <p className="error" role="alert">{error}</p>}
-      </form>
-      <section className="panel results" aria-live="polite">
-        <div className="heading"><div><p className="eyebrow">02 / STATISTICAL OUTPUT</p><h2>Results & interpretation</h2></div><span className="step">02</span></div>
-        {!result ? <div className="empty"><div className="empty-icon">∿</div><h3>Your evidence appears here</h3><p>Run an analysis to inspect the test statistic, p-value, effect estimate, and interpretation.</p></div> : <>
-          <div className="banner"><small>RESULT AT α = {result.alpha}</small><strong>{result.statistically_significant ? "Statistically significant" : "Not statistically significant"}</strong></div>
-          <div className="metrics"><div><small>P-value</small><strong>{result.p_value.toPrecision(4)}</strong></div><div><small>Test statistic</small><strong>{result.statistic.toFixed(3)}</strong></div><div><small>Control n</small><strong>{result.sample_size_control.toLocaleString()}</strong></div><div><small>Treatment n</small><strong>{result.sample_size_treatment.toLocaleString()}</strong></div></div>
-          <div className="effect"><p className="eyebrow">EFFECT ESTIMATE</p>{Object.entries(result.effect).map(([key,value]) => <div className="effect-row" key={key}><span>{key.replace(/_/g, " ")}</span><b>{Array.isArray(value) ? value.map(x => x.toFixed(4)).join(" to ") : typeof value === "number" ? value.toFixed(4) : value ?? "—"}</b></div>)}</div>
-          <div className="interpretation"><small>INTERPRETATION</small><p>{result.interpretation}</p></div>
-        </>}
-        <p className="footnote">Statistical significance is not practical significance. Verify design assumptions and data quality before deciding.</p>
-      </section>
-    </section>
-    <section className="grid advanced-grid">
-      <section className="panel">
-        <div className="heading"><div><p className="eyebrow">03 / ADVANCED METHODS</p><h2>Bayesian & sequential</h2></div><span className="step">03</span></div>
-        <p className="intro small-intro">Use successes,total values in the two input fields above. These methods analyze binary conversion outcomes.</p>
-        <div className="button-row"><button type="button" onClick={() => runAdvanced("bayesian")}>Bayesian A/B</button><button type="button" className="secondary" onClick={() => runAdvanced("sequential")}>Sequential check</button></div>
-        {advancedResult && <div className="json-result"><pre>{JSON.stringify(advancedResult, null, 2)}</pre></div>}
-      </section>
-      <section className="panel">
-        <div className="heading"><div><p className="eyebrow">04 / DATA UPLOAD</p><h2>Analyze a CSV</h2></div><span className="step">04</span></div>
-        <label>CSV file<input type="file" accept=".csv,text/csv" onChange={uploadCsv}/></label>
-        {csvName && <p className="footnote">Selected: {csvName} · {(csvText.length / 1024).toFixed(1)} KB</p>}
-        <p className="footnote">For this quick upload flow, include a <code>variant</code> column with two groups and a numeric <code>converted</code> outcome. The upload is analyzed in memory and is not stored.</p>
-        <button type="button" onClick={runCsv}>Analyze uploaded CSV ↗</button>
-      </section>
-    </section>
-    {result && (
-      <section className="panel chart-panel">
-        <p className="eyebrow">VISUAL SUMMARY</p>
-        <h2>Group observations</h2>
-        <div className="bars">
-          <div>
-            <span>Control · n={result.sample_size_control}</span>
-            <div className="bar-track"><i style={{ width: "50%" }} /></div>
-          </div>
-          <div>
-            <span>Treatment · n={result.sample_size_treatment}</span>
-            <div className="bar-track"><i style={{ width: "75%" }} /></div>
-          </div>
-        </div>
-        <p className="footnote">Bars show relative sample-size indicators, not the treatment effect. Interpret the numeric estimate and confidence interval above.</p>
-      </section>
-    )}
-    <footer><span>EvidenceLab · Transparent statistical results</span><span>React · FastAPI · Statsmodels</span></footer>
+    <header className="topbar"><a className="brand" href="#"><span className="mark">∑</span> EvidenceLab</a><span className={"status "+apiStatus}><i/>API {apiStatus}</span></header>
+    <section className="hero"><p className="eyebrow">EXPERIMENTATION & CAUSAL INFERENCE</p><h1>Make decisions with<br/><em>statistical evidence.</em></h1><p className="intro">A single workspace for experiment planning, A/B testing, multiplicity correction, Bayesian evidence, sequential checks and observational causal methods.</p></section>
+    <nav className="workspace-nav" aria-label="Analysis tools">{nav.map(([id,label])=><button key={id} type="button" className={active===id?"nav-active":""} onClick={()=>{setActive(id);setError("");setResult(null)}}>{label}</button>)}</nav>
+    {active==="analyze"&&<form className="panel workspace" onSubmit={runAnalysis}><div className="heading"><div><p className="eyebrow">01 / EXPERIMENT</p><h2>Compare two groups</h2></div></div><div className="form-grid"><Field label="Statistical method"><select value={method} onChange={e=>{const m=e.target.value as AnalysisMethod;setMethod(m);if(m==="proportion_z"){setControl("42,500");setTreatment("58,500")}else if(m==="chi_square"){setControl("30,20");setTreatment("20,30")}else{setControl("12,14,13,15,11,16,14,13");setTreatment("14,15,16,17,13,18,15,16")}}}><option value="welch_t">Welch's t-test · continuous</option><option value="proportion_z">Two-proportion z-test · conversion</option><option value="chi_square">Chi-square · category counts</option></select></Field><Field label="Significance level (alpha)"><select value={alpha} onChange={e=>setAlpha(e.target.value)}><option value="0.01">0.01</option><option value="0.05">0.05</option><option value="0.1">0.10</option></select></Field><Field label="Control input" hint={method==="proportion_z"?"successes,total (e.g. 42,500)":method==="chi_square"?"Category counts in order":"Comma-separated numeric observations"}><textarea rows={4} value={control} onChange={e=>setControl(e.target.value)}/></Field><Field label="Treatment input" hint={method==="proportion_z"?"successes,total (e.g. 58,500)":method==="chi_square"?"Same categories in the same order":"Comma-separated numeric observations"}><textarea rows={4} value={treatment} onChange={e=>setTreatment(e.target.value)}/></Field></div><button className="primary" disabled={loading}>{loading?"Analyzing…":"Run statistical test ↗"}</button></form>}
+    {active==="power"&&<form className="panel workspace" onSubmit={runPower}><div className="heading"><div><p className="eyebrow">02 / PLAN</p><h2>Power & sample-size calculator</h2></div></div><div className="form-grid"><Field label="Outcome type"><select value={powerMetric} onChange={e=>setPowerMetric(e.target.value as "continuous"|"binary")}><option value="binary">Binary conversion rate</option><option value="continuous">Continuous measurement</option></select></Field><Field label="Minimum detectable effect"><input type="number" min="0.0001" step="any" value={mde} onChange={e=>setMde(e.target.value)} required/></Field>{powerMetric==="binary"?<Field label="Baseline conversion rate (0–1)"><input type="number" min="0.0001" max="0.999" step="any" value={baseline} onChange={e=>setBaseline(e.target.value)} required/></Field>:<Field label="Standard deviation"><input type="number" min="0.0001" step="any" value={sd} onChange={e=>setSd(e.target.value)} required/></Field>}<Field label="Target power"><select value={targetPower} onChange={e=>setTargetPower(e.target.value)}><option value="0.8">80%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></Field><Field label="Control-to-treatment allocation ratio"><input type="number" min="0.1" max="10" step="any" value={allocation} onChange={e=>setAllocation(e.target.value)}/></Field></div><p className="caveat">Uses a two-sided independent two-arm planning approximation. Confirm that the assumptions match your experiment design.</p><button className="primary" disabled={loading}>Calculate sample size ↗</button></form>}
+    {active==="simulate"&&<form className="panel workspace" onSubmit={runSimulation}><div className="heading"><div><p className="eyebrow">03 / SIMULATION</p><h2>Generate reproducible A/B data</h2></div></div><div className="form-grid"><Field label="Sample size per arm"><input type="number" min="10" max="1000000" value={simN} onChange={e=>setSimN(e.target.value)}/></Field><Field label="Control baseline rate"><input type="number" min="0.001" max="0.999" step="any" value={simRate} onChange={e=>setSimRate(e.target.value)}/></Field><Field label="Absolute treatment effect"><input type="number" min="-0.99" max="0.99" step="any" value={simEffect} onChange={e=>setSimEffect(e.target.value)}/></Field><Field label="Random seed"><input type="number" min="0" value={seed} onChange={e=>setSeed(e.target.value)}/></Field></div><p className="caveat">Simulated Bernoulli outcomes only; this is not real-world evidence.</p><button className="primary" disabled={loading}>Simulate experiment ↗</button></form>}
+    {active==="correction"&&<form className="panel workspace" onSubmit={runCorrection}><div className="heading"><div><p className="eyebrow">04 / MULTIPLE TESTS</p><h2>Correct for multiple comparisons</h2></div></div><div className="form-grid"><Field label="Correction method"><select value={correction} onChange={e=>setCorrection(e.target.value)}><option value="bonferroni">Bonferroni · family-wise error</option><option value="fdr_bh">Benjamini–Hochberg · false discovery rate</option></select></Field><Field label="Significance level"><select value={alpha} onChange={e=>setAlpha(e.target.value)}><option value="0.01">0.01</option><option value="0.05">0.05</option><option value="0.1">0.10</option></select></Field><Field label="Raw p-values" hint="Comma-separated values between 0 and 1"><textarea rows={4} value={pValues} onChange={e=>setPValues(e.target.value)}/></Field></div><button className="primary" disabled={loading}>Adjust p-values ↗</button></form>}
+    {(active==="bayes"||active==="sequential")&&<form className="panel workspace" onSubmit={active==="bayes"?runBayes:runSequential}><div className="heading"><div><p className="eyebrow">0{active==="bayes"?"5":"6"} / BINARY EXPERIMENT</p><h2>{active==="bayes"?"Bayesian A/B analysis":"Sequential testing check"}</h2></div></div><div className="form-grid"><Field label="Control successes"><input type="number" min="0" value={successA} onChange={e=>setSuccessA(e.target.value)}/></Field><Field label="Control total"><input type="number" min="1" value={totalA} onChange={e=>setTotalA(e.target.value)}/></Field><Field label="Treatment successes"><input type="number" min="0" value={successB} onChange={e=>setSuccessB(e.target.value)}/></Field><Field label="Treatment total"><input type="number" min="1" value={totalB} onChange={e=>setTotalB(e.target.value)}/></Field>{active==="bayes"?<><Field label="Prior alpha"><input type="number" min="0.001" step="any" value={priorA} onChange={e=>setPriorA(e.target.value)}/></Field><Field label="Prior beta"><input type="number" min="0.001" step="any" value={priorB} onChange={e=>setPriorB(e.target.value)}/></Field><Field label="Monte Carlo draws"><select value={draws} onChange={e=>setDraws(e.target.value)}><option value="10000">10,000</option><option value="100000">100,000</option><option value="500000">500,000</option></select></Field></>:<><Field label="Planned total looks"><input type="number" min="1" max="100" value={looks} onChange={e=>setLooks(e.target.value)}/></Field><Field label="Current look"><input type="number" min="1" max={looks} value={currentLook} onChange={e=>setCurrentLook(e.target.value)}/></Field><Field label="Alpha"><select value={alpha} onChange={e=>setAlpha(e.target.value)}><option value="0.01">0.01</option><option value="0.05">0.05</option><option value="0.1">0.10</option></select></Field></>}</div><p className="caveat">{active==="bayes"?"Beta-Binomial posterior simulation; this is not PyMC. The probability depends on the model and prior.":"Conservative Bonferroni correction across prespecified looks. Do not add extra looks after inspecting results; this is not a full alpha-spending design."}</p><button className="primary" disabled={loading}>{active==="bayes"?"Estimate probability B > A ↗":"Evaluate current look ↗"}</button></form>}
+    {active==="causal"&&<form className="panel workspace" onSubmit={runCsv}><div className="heading"><div><p className="eyebrow">07 / OBSERVATIONAL DATA</p><h2>CSV analysis & causal methods</h2></div></div><Field label="Upload CSV"><input type="file" accept=".csv,text/csv" onChange={readCsv}/></Field>{csvName&&<p className="file-chip">Loaded {csvName} · {csvColumns.length} columns · {Math.max(0,csvText.split(/\r?\n/).length-1)} lines</p>}<Field label="Analysis method"><select value={csvMethod} onChange={e=>setCsvMethod(e.target.value as CausalMethod)}><option value="welch_t">Welch's t-test from two groups</option><option value="propensity_score_matching">Propensity score matching</option><option value="difference_in_differences">Difference-in-differences</option><option value="synthetic_control">Synthetic control</option></select></Field><div className="form-grid">{csvMethod==="welch_t"&&<Field label="Group / variant column"><select value={groupCol} onChange={e=>setGroupCol(e.target.value)}>{(csvColumns.length?csvColumns:["variant"]).map(c=><option key={c}>{c}</option>)}</select></Field>}{csvMethod==="propensity_score_matching"&&<><Field label="Treatment column (0/1)"><select value={treatmentCol} onChange={e=>setTreatmentCol(e.target.value)}>{(csvColumns.length?csvColumns:["treatment"]).map(c=><option key={c}>{c}</option>)}</select></Field><Field label="Covariate columns" hint="Comma-separated column names"><input value={covariateCols} onChange={e=>setCovariateCols(e.target.value)}/></Field></>}{(csvMethod==="difference_in_differences"||csvMethod==="synthetic_control")&&<><Field label={csvMethod==="synthetic_control"?"Unit column":"Group / treated column"}><select value={treatmentCol} onChange={e=>setTreatmentCol(e.target.value)}>{(csvColumns.length?csvColumns:["unit"]).map(c=><option key={c}>{c}</option>)}</select></Field><Field label={csvMethod==="synthetic_control"?"Time column":"Period column (0=pre, 1=post)"}><select value={timeCol} onChange={e=>setTimeCol(e.target.value)}>{(csvColumns.length?csvColumns:["period"]).map(c=><option key={c}>{c}</option>)}</select></Field></>}{<Field label="Outcome column"><select value={outcomeCol} onChange={e=>setOutcomeCol(e.target.value)}>{(csvColumns.length?csvColumns:["converted"]).map(c=><option key={c}>{c}</option>)}</select></Field>}{csvMethod==="synthetic_control"&&<><Field label="Treated unit value"><input value={treatedUnit} onChange={e=>setTreatedUnit(e.target.value)} required/></Field><Field label="Intervention time"><input type="number" value={interventionTime} onChange={e=>setInterventionTime(e.target.value)} required/></Field></>}</div><p className="caveat">CSV is sent to the API for this request and not intentionally saved by this interface. Causal estimates rely on design assumptions and cannot rule out unmeasured confounding.</p><button className="primary" disabled={loading||!csvText}>{loading?"Analyzing…":"Analyze CSV ↗"}</button></form>}
+    <section className="panel results-panel"><div className="heading"><div><p className="eyebrow">RESULTS / INTERPRETATION</p><h2>Evidence report</h2></div><span className={"status "+(result?"online":"")}>{result?"Results ready":loading?"Working…":"Waiting"}</span></div>{error&&<p className="error" role="alert">{error}</p>}<Output value={result}/></section>
+    <section className="requirements-note"><strong>Coverage note</strong><p>The interface now exposes the available API workflows. Bayesian analysis is Beta-Binomial simulation (not PyMC), sequential testing is a Bonferroni fixed-look correction, and causal methods require assumption checks and validation before production use.</p><p>Architecture, API and statistical-method documentation: <a href="https://github.com/PrahitViraajReddy/Experimentation-and-Causal-Inference-Platform/tree/feat/statistical-platform-foundation/tree/master/docs">GitHub docs</a> · API reference: <a href={API+"/docs"} target="_blank" rel="noreferrer">Open API docs</a></p></section>
+    <footer><span>EvidenceLab · Experimentation & causal inference</span><span>React · TypeScript · FastAPI</span></footer>
   </main>;
 }
