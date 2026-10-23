@@ -15,6 +15,11 @@ An analytics platform for planning A/B tests, analyzing experiment outcomes, and
 ## Stack
 React + TypeScript · FastAPI · Pydantic · NumPy · SciPy · Statsmodels · Pytest
 
+## Live deployments
+- **Frontend:** https://experimentation-and-causal-inference-platform-fronte-aas97gvog.vercel.app/
+- **Backend API:** https://experimentation-and-causal-inference-81xv.onrender.com/
+- **Interactive API docs:** https://experimentation-and-causal-inference-81xv.onrender.com/docs
+
 ## Run locally
 Backend (Python 3.11+):
 ```bash
