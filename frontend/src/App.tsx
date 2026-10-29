@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 
-const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference-81xv.onrender.com")).replace(/\/+$/, "");
+const API = (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://experimentation-and-causal-inference-81xv.onrender.com").replace(/\/+$/, "");
 type AnyResult = Record<string, any>;
 type AnalysisMethod = "welch_t" | "proportion_z" | "chi_square";
 type CausalMethod = "welch_t" | "propensity_score_matching" | "difference_in_differences" | "synthetic_control" | "econml_cate";
