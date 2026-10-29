@@ -2,7 +2,7 @@
 
 An analytics platform for planning A/B tests, analyzing experiment outcomes, and estimating treatment effects when randomization is unavailable.
 
-**Status:** foundation implementation on a feature branch. Methods are only considered ready when their estimators, diagnostics, and tests are implemented.
+
 
 ## Scope
 - Sample-size / power planning
@@ -16,7 +16,7 @@ An analytics platform for planning A/B tests, analyzing experiment outcomes, and
 React + TypeScript · FastAPI · Pydantic · NumPy · SciPy · Statsmodels · Pytest
 
 ## Live deployments
-- **Frontend:** https://experimentation-and-causal-inference-platform-fronte-aas97gvog.vercel.app/
+- **Frontend:** https://experimentation-and-causal-inference-platform-fronte-2fmcdq0fy.vercel.app/
 - **Backend API:** https://experimentation-and-causal-inference-81xv.onrender.com/
 - **Interactive API docs:** https://experimentation-and-causal-inference-81xv.onrender.com/docs
 
@@ -53,12 +53,7 @@ cd backend
 pytest
 ```
 
-## Statistical integrity
-1. Report effect sizes and uncertainty, not only p-values.
-2. Statistical significance does not establish practical importance.
-3. Failure to reject is not proof of equality.
-4. Observational causal estimates depend on assumptions; diagnostics cannot prove them.
-5. Repeatedly checking a fixed-horizon p-value is not valid sequential testing.
+
 6. Do not publish validation metrics until they have actually been measured.
 
 ## Limitations
