@@ -68,7 +68,7 @@ export default function App() {
   useEffect(()=>{const ctl=new AbortController();fetch(API+"/api/v1/health",{signal:ctl.signal}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(x=>setApiStatus(x.status==="ok"?"online":"offline")).catch(()=>setApiStatus("offline"));return()=>ctl.abort()},[]);
   async function request(path:string,payload:AnyResult) {
     setLoading(true);setError("");setResult(null);
-    try {const response=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==="string"?body.detail:Array.isArray(body.detail)?body.detail.map((x:AnyResult)=>x.msg).join("; "):"Request failed");setResult(body);}
+    try {const response=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==="string"?body.detail:Array.isArray(body.detail)?body.detail.map((x:AnyResult)=>`${Array.isArray(x.loc)?x.loc.filter((part:any)=>part!=="body").join(".")+": ":""}${x.msg}`).join("; "):"Request failed");setResult(body);}
     catch(e){setError(e instanceof Error?e.message:"Request failed. Check that the backend is online.");}
     finally{setLoading(false);}
   }
