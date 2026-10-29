@@ -50,7 +50,7 @@ export default function App() {
   const [totalB,setTotalB] = useState("500");
   const [priorA,setPriorA] = useState("1");
   const [priorB,setPriorB] = useState("1");
-  const [draws,setDraws] = useState("100000");
+  const [draws,setDraws] = useState("500");
   const [looks,setLooks] = useState("5");
   const [currentLook,setCurrentLook] = useState("1");
   const [csvText,setCsvText] = useState("");
